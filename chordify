@@ -1,0 +1,95 @@
+#!/usr/bin/perl
+# Created by David Hillis (2009)
+
+if( $#ARGV != 0 )
+{
+    print "Usage: chordify <filename>";
+}
+
+open( INFILE,$ARGV[0] ) or die "could not open $ARGV[0]: $!\n";
+
+$outfileName = $ARGV[0];
+$outfileName =~ s/(\..*)$/.cho/g;
+open( OUTFILE,">$outfileName" ) or die "could not open $outfileName: $!\n";
+
+@lines = <INFILE>;
+my @slide_names;
+for( my $i = 0 ; $i <= $#lines ; ++$i ) 
+{
+    $line = $lines[$i];
+
+    if( $line =~ /^[A-G\/#bsum0-9 ]*$/ && $line !~ /^[ ]*$/ )
+    {
+        if( $i+1 <= $#lines ) {
+            $nextLine = $lines[$i+1];
+        }
+        else 
+        {
+            $nextLine = "";
+        }
+
+        if( $nextLine =~ /^[A-G\/#bsum0-9 ]*$/ ) 
+        {
+            # Next line is a chord (or empty) line.
+            # We'll just wrap all the chords in []'s
+            
+            $line =~ s/([A-G\/#bsum0-9]+) ?/\[\1\]/g;
+            $line =~ s/ +/ /g;
+            print OUTFILE $line
+        } 
+        else 
+        {
+            # Next line is a lyric line.
+            # We'll embed the chords in it
+
+            $offset = 0;
+            while ($line =~ m/\b([A-G\/#bsum0-9]+) ?/g) 
+            {
+                while ( length($nextLine) < pos($line) + $offset ) 
+                {
+                    chomp $nextLine;
+                    $nextLine .= " \n";
+                }
+                substr($nextLine, pos($line) - length("$&") + $offset, 0) = "[$1]";
+                $offset += length("[$1]"); 
+            }
+            $nextLine =~ s/ +/ /g;
+            $nextLine =~ s/\] *\[/]          [/g;
+            print OUTFILE $nextLine;
+            ++$i;
+        }
+    } 
+    elsif ( $line =~ /(Verse|Chorus|Bridge|Outro|Intro|Instrumental|PreChorus)/i )
+    {
+        if ($line =~/^ *{cb/i)
+        {
+            print OUTFILE $line;
+            next;
+        }
+
+        my $token = $1;
+        my $num = "";
+        if ($line =~ /$token *(\d+)/)
+        {
+            $num = $1;
+        }
+
+        $line =~ s/($token *$num)/{ci:\1}/i;
+
+        print OUTFILE $line;
+
+        if ($token !~ /(Intro|Instrumental)/i)
+        {
+            my $slide_name = lc($token)."$num";
+            print OUTFILE "#slide:$slide_name\n";
+            push @slide_names, $slide_name;
+        }
+    }
+    else 
+    {
+        print OUTFILE $line;
+    }
+}
+print OUTFILE "#ppt:slides, ".join(", ",@slide_names) unless (scalar @slide_names == 0);
+close INFILE;
+close OUTFILE;
